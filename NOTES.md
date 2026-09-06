@@ -65,6 +65,40 @@ Next, understand the full retrieval flow:
 
 The embedding model is separate from Gemma because chat models generate text, while embedding models convert text into vectors for similarity search.
 
+#### Tracing behavior in `3_rag_v1.py`
+
+In v1, LangSmith automatically logs the runnables that are part of the LangChain chain, such as the retriever, prompt, Ollama model, and output parser. The PDF loader, chunker/splitter, embedding setup, and FAISS index construction happen before the chain is invoked, so they are not individually logged as LangSmith runs. Later versions add explicit `@traceable` wrappers around setup and preprocessing steps so those components appear in the trace.
+
+#### How `3_rag_v2.py` improves this
+
+V2 makes the preprocessing steps visible by decorating the regular Python functions with LangSmith's `@traceable` decorator:
+
+```python
+@traceable(name="load_pdf")
+def load_pdf(path):
+    ...
+
+@traceable(name="split_documents")
+def split_documents(docs):
+    ...
+
+@traceable(name="build_vectorstore")
+def build_vectorstore(splits):
+    ...
+```
+
+It then groups those steps under a parent setup run:
+
+```python
+@traceable(name="setup_pipeline")
+def setup_pipeline(pdf_path):
+    docs = load_pdf(pdf_path)
+    splits = split_documents(docs)
+    return build_vectorstore(splits)
+```
+
+This gives LangSmith a nested trace: `setup_pipeline` contains the PDF loading, splitting, and vectorstore-building child runs. V2 also names the actual question-answering run with `config={"run_name": "pdf_rag_query"}`, making setup and query execution easier to identify separately in LangSmith.
+
 ### Lesson 4 — agents
 
 Study how tools are defined, how the ReAct prompt chooses tools, and how `AgentExecutor` controls the loop. Verify Ollama tool-calling behavior before treating this example as production-ready.

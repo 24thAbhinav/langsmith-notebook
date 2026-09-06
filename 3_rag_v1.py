@@ -16,7 +16,7 @@ from langchain_core.runnables import (
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
 load_dotenv()
-
+os.environ["LANGSMITH_PROJECT"] = "RAG"
 PDF_PATH = "islr.pdf"  # <-- change to your PDF filename
 
 # 1) Load PDF
@@ -29,7 +29,25 @@ splits = splitter.split_documents(docs)
 
 # 3) Embed + index
 emb = OllamaEmbeddings(model="nomic-embed-text")
-vs = FAISS.from_documents(splits, emb)
+
+
+# Ollama can fail when all PDF chunks are sent in one large request.
+def build_faiss_index(documents, embedding_model, batch_size=32):
+    texts = [document.page_content for document in documents]
+    vectors = []
+    for start in range(0, len(texts), batch_size):
+        vectors.extend(
+            embedding_model.embed_documents(texts[start : start + batch_size])
+        )
+
+    return FAISS.from_embeddings(
+        list(zip(texts, vectors)),
+        embedding_model,
+        metadatas=[document.metadata for document in documents],
+    )
+
+
+vs = build_faiss_index(splits, emb)
 retriever = vs.as_retriever(search_type="similarity", search_kwargs={"k": 4})
 
 # 4) Prompt

@@ -39,7 +39,16 @@ def split_documents(docs, chunk_size=1000, chunk_overlap=150):
 @traceable(name="build_vectorstore")
 def build_vectorstore(splits):
     emb = OllamaEmbeddings(model="nomic-embed-text")
-    return FAISS.from_documents(splits, emb)
+    texts = [document.page_content for document in splits]
+    vectors = []
+    for start in range(0, len(texts), 32):
+        vectors.extend(emb.embed_documents(texts[start:start + 32]))
+
+    return FAISS.from_embeddings(
+        list(zip(texts, vectors)),
+        emb,
+        metadatas=[document.metadata for document in splits],
+    )
 
 
 # ----------------- parent setup function (traced) -----------------
