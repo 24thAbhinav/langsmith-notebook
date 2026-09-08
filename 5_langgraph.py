@@ -10,9 +10,11 @@ from langsmith import traceable
 from langchain_ollama import ChatOllama
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
-
+import os
 # ---------- Setup ----------
 load_dotenv()
+
+os.environ['LANGCHAIN_PROJECT']='LANGGRAPH'
 model = ChatOllama(model="gemma2:2b", temperature=0)
 
 # ---------- Structured schema & model ----------
@@ -20,7 +22,7 @@ class EvaluationSchema(BaseModel):
     feedback: str = Field(description="Detailed feedback for the essay")
     score: int = Field(description="Score out of 10", ge=0, le=10)
 
-structured_model = model.with_structured_output(EvaluationSchema)
+structured_model = model.with_structured_output(EvaluationSchema, method="json_mode")
 
 # ---------- Sample essay ----------
 essay2 = """India and AI Time
@@ -56,8 +58,9 @@ class UPSCState(TypedDict, total=False):
 @traceable(name="evaluate_language_fn", tags=["dimension:language"], metadata={"dimension": "language"})
 def evaluate_language(state: UPSCState):
     prompt = (
-        "Evaluate the language quality of the following essay and provide feedback "
-        "and assign a score out of 10.\n\n" + state["essay"]
+        "Evaluate the language quality of the following essay.\n"
+        "Respond strictly in JSON format with keys \"feedback\" (string) and \"score\" (integer 0-10).\n\n"
+        f"Essay:\n{state['essay']}"
     )
     out = structured_model.invoke(prompt)
     return {"language_feedback": out.feedback, "individual_scores": [out.score]}
@@ -65,8 +68,9 @@ def evaluate_language(state: UPSCState):
 @traceable(name="evaluate_analysis_fn", tags=["dimension:analysis"], metadata={"dimension": "analysis"})
 def evaluate_analysis(state: UPSCState):
     prompt = (
-        "Evaluate the depth of analysis of the following essay and provide feedback "
-        "and assign a score out of 10.\n\n" + state["essay"]
+        "Evaluate the depth of analysis of the following essay.\n"
+        "Respond strictly in JSON format with keys \"feedback\" (string) and \"score\" (integer 0-10).\n\n"
+        f"Essay:\n{state['essay']}"
     )
     out = structured_model.invoke(prompt)
     return {"analysis_feedback": out.feedback, "individual_scores": [out.score]}
@@ -74,8 +78,9 @@ def evaluate_analysis(state: UPSCState):
 @traceable(name="evaluate_thought_fn", tags=["dimension:clarity"], metadata={"dimension": "clarity_of_thought"})
 def evaluate_thought(state: UPSCState):
     prompt = (
-        "Evaluate the clarity of thought of the following essay and provide feedback "
-        "and assign a score out of 10.\n\n" + state["essay"]
+        "Evaluate the clarity of thought of the following essay.\n"
+        "Respond strictly in JSON format with keys \"feedback\" (string) and \"score\" (integer 0-10).\n\n"
+        f"Essay:\n{state['essay']}"
     )
     out = structured_model.invoke(prompt)
     return {"clarity_feedback": out.feedback, "individual_scores": [out.score]}
