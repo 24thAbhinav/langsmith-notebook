@@ -257,7 +257,20 @@ Shows `setup_pipeline` completing in just **0.09s** via `load_index` (`load_inde
 
 ### Lesson 4 — agents
 
-Study how tools are defined, how the ReAct prompt chooses tools, and how `AgentExecutor` controls the loop. Verify Ollama tool-calling behavior before treating this example as production-ready.
+In [4_agent.py](file:///Users/abhinav/Documents/Projects/langsmith/langsmith-masterclass/4_agent.py), a ReAct (Reasoning + Acting) Agent is created using `create_react_agent` and executed via `AgentExecutor`.
+
+#### Key Concepts & Tracing Architecture:
+1. **ReAct Loop Execution**:
+   - `AgentExecutor` manages the iterative decision loop (*Thought → Action → Action Input → Observation → Final Answer*).
+   - In LangSmith, `AgentExecutor` serves as the root trace, logging each iteration's `RunnableSequence` (Prompt → `ChatOllama` → `ReActSingleInputOutputParser`).
+
+2. **Tool Invocation Spans**:
+   - Custom `@tool` functions (e.g. `get_weather_data`) and pre-built tools (e.g. `DuckDuckGoSearchRun`) appear as distinct child spans inside the trace tree.
+   - When the agent decides to invoke `get_weather_data` (`0.89s`), the HTTP API response is captured directly in the trace output and passed as an observation into the next prompt iteration.
+
+#### LangSmith Trace for `4_agent.py`
+
+![AgentExecutor ReAct Trace](assets/v4_agent_trace.png)
 
 ### Lesson 5 — LangGraph
 

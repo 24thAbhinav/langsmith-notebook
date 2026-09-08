@@ -5,8 +5,12 @@ from langchain_community.tools import DuckDuckGoSearchRun
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain import hub
 from dotenv import load_dotenv
-
+import os
 load_dotenv()
+
+
+os.environ['LANGCHAIN_PROJECT']='ReAct Agent'
+
 
 search_tool = DuckDuckGoSearchRun()
 
