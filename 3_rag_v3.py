@@ -21,14 +21,18 @@ load_dotenv()
 PDF_PATH = "islr.pdf"  # <- change to your file
 
 
-# ----------------- helpers (not traced individually) -----------------
-@traceable(name="load_pdf")
+# ----------------- helpers (traced with tags & metadata) -----------------
+@traceable(name="load_pdf", tags=["pdf", "loader"], metadata={"loader": "PyPDFLoader"})
 def load_pdf(path: str):
     loader = PyPDFLoader(path)
     return loader.load()  # list[Document]
 
 
-@traceable(name="split_documents")
+@traceable(
+    name="split_documents",
+    tags=["splitter"],
+    metadata={"splitter": "RecursiveCharacterTextSplitter"},
+)
 def split_documents(docs, chunk_size=1000, chunk_overlap=150):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size, chunk_overlap=chunk_overlap
@@ -36,7 +40,11 @@ def split_documents(docs, chunk_size=1000, chunk_overlap=150):
     return splitter.split_documents(docs)
 
 
-@traceable(name="build_vectorstore")
+@traceable(
+    name="build_vectorstore",
+    tags=["vectorstore"],
+    metadata={"vectorstore": "FAISS"},
+)
 def build_vectorstore(splits):
     emb = OllamaEmbeddings(model="nomic-embed-text")
     texts = [document.page_content for document in splits]
@@ -52,7 +60,11 @@ def build_vectorstore(splits):
 
 
 # ----------------- parent setup function (traced) -----------------
-@traceable(name="setup_pipeline", tags=["setup"])
+@traceable(
+    name="setup_pipeline",
+    tags=["setup"],
+    metadata={"chunk_size": 1000, "chunk_overlap": 150},
+)
 def setup_pipeline(pdf_path: str, chunk_size=1000, chunk_overlap=150):
     # ✅ These three steps are “clubbed” under this parent function
     docs = load_pdf(pdf_path)
@@ -80,7 +92,11 @@ def format_docs(docs):
 
 
 # ----------------- one top-level (root) run -----------------
-@traceable(name="pdf_rag_full_run")
+@traceable(
+    name="pdf_rag_full_run",
+    tags=["rag", "full_run"],
+    metadata={"model": "gemma2:2b", "embedding_model": "nomic-embed-text"},
+)
 def setup_pipeline_and_query(pdf_path: str, question: str):
     # Parent setup run (child of root)
     vectorstore = setup_pipeline(pdf_path, chunk_size=1000, chunk_overlap=150)
