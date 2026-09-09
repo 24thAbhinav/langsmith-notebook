@@ -311,6 +311,7 @@ LangGraph manages stateful, multi-turn agent sessions using checkpointers keyed 
 When compiling a graph with a checkpointer (e.g., `MemorySaver`, `SqliteSaver`, or `PostgresSaver`), you pass `thread_id` inside `config["configurable"]`:
 
 ```python
+import streamlit as st
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.runnables import RunnableConfig
 
@@ -318,25 +319,27 @@ from langchain_core.runnables import RunnableConfig
 checkpointer = MemorySaver()
 workflow = graph.compile(checkpointer=checkpointer)
 
-# RunnableConfig with thread_id
+# RunnableConfig: Passing thread_id in BOTH configurable and metadata
 config: RunnableConfig = {
-    "configurable": {"thread_id": "session_user_101"},
-    "run_name": "agent_chat_turn",
-    "tags": ["multi_turn", "customer_support"],
-    "metadata": {"user_id": "user_42"},
+    "configurable": {"thread_id": st.session_state["thread_id"]}, # For LangGraph State Persistence
+    "metadata": {
+        "thread_id": st.session_state["thread_id"],              # For LangSmith Thread Monitoring & Filtering
+    },
+    "run_name": "chat_turn",
 }
 
-# Turn 1: Invocation creates thread state and initial trace
-response_1 = workflow.invoke({"messages": [HumanMessage(content="Hello, I need help with my order.")]}, config=config)
-
-# Turn 2: Re-invoking with the SAME thread_id loads previous state automatically
-response_2 = workflow.invoke({"messages": [HumanMessage(content="What order did I just ask about?")]}, config=config)
+# Turn execution
+response = workflow.invoke(
+    {"messages": [HumanMessage(content="Hello, I need help with my order.")]},
+    config=config
+)
 ```
 
-##### 2. Automatic Metadata & Trace Propagation
+##### 2. Why Pass `thread_id` in BOTH `configurable` AND `metadata`?
 
-- When `config["configurable"]["thread_id"]` is passed, LangGraph automatically injects `thread_id` into LangSmith run metadata (`metadata.thread_id`).
-- Every `.invoke()`, `.astream()`, or step execution carrying the same `thread_id` is automatically linked to that specific thread in LangSmith.
+- **`"configurable": {"thread_id": ...}`**: **Required by LangGraph** runtime checkpointers (`MemorySaver`, `SqliteSaver`) to save, retrieve, and resume graph state across turns (e.g. stored in `st.session_state["thread_id"]` for Streamlit apps).
+- **`"metadata": {"thread_id": ...}`**: **Explicitly passed for LangSmith Thread Monitoring**. Ensures that `metadata.thread_id` is indexed directly by LangSmith for session-level grouping, thread dashboard monitoring, and searching (`metadata.thread_id = "..."`).
+- **`"run_name": "chat_turn"`**: Replaces default runnable sequence names with a clean identifier for each chat turn in the LangSmith trace list.
 
 ##### 3. Core Observability Capabilities via Threads
 
