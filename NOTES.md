@@ -302,6 +302,57 @@ In [5_langgraph.py](file:///Users/abhinav/Documents/Projects/langsmith/langsmith
    - **LangGraph Node Spans**: LangGraph automatically logs top-level graph node execution spans (`evaluate_analysis`, `evaluate_language`, `evaluate_thought`, `final_evaluation`).
    - **Decorated Function Child Spans**: Because each node's Python function is decorated with `@traceable` (e.g., `@traceable(name="evaluate_analysis_fn")`), LangSmith creates a nested child span directly under the node span for the underlying function (`evaluate_analysis_fn` inside `evaluate_analysis`), capturing function parameters, tags, and internal runnable execution sequences.
 
+#### Observability in LangGraph via Threads (`thread_id`)
+
+LangGraph manages stateful, multi-turn agent sessions using checkpointers keyed by a **`thread_id`**. In LangSmith, threads provide session-level observability, allowing developers to trace, analyze, and debug complex agent interactions across multiple turns.
+
+##### 1. How `thread_id` is Configured in Execution
+
+When compiling a graph with a checkpointer (e.g., `MemorySaver`, `SqliteSaver`, or `PostgresSaver`), you pass `thread_id` inside `config["configurable"]`:
+
+```python
+from langgraph.checkpoint.memory import MemorySaver
+from langchain_core.runnables import RunnableConfig
+
+# Compile graph with checkpointer
+checkpointer = MemorySaver()
+workflow = graph.compile(checkpointer=checkpointer)
+
+# RunnableConfig with thread_id
+config: RunnableConfig = {
+    "configurable": {"thread_id": "session_user_101"},
+    "run_name": "agent_chat_turn",
+    "tags": ["multi_turn", "customer_support"],
+    "metadata": {"user_id": "user_42"},
+}
+
+# Turn 1: Invocation creates thread state and initial trace
+response_1 = workflow.invoke({"messages": [HumanMessage(content="Hello, I need help with my order.")]}, config=config)
+
+# Turn 2: Re-invoking with the SAME thread_id loads previous state automatically
+response_2 = workflow.invoke({"messages": [HumanMessage(content="What order did I just ask about?")]}, config=config)
+```
+
+##### 2. Automatic Metadata & Trace Propagation
+
+- When `config["configurable"]["thread_id"]` is passed, LangGraph automatically injects `thread_id` into LangSmith run metadata (`metadata.thread_id`).
+- Every `.invoke()`, `.astream()`, or step execution carrying the same `thread_id` is automatically linked to that specific thread in LangSmith.
+
+##### 3. Core Observability Capabilities via Threads
+
+- **Multi-Turn Session Aggregation**: Trace an entire user conversation or multi-step workflow across multiple API calls, calculating cumulative token usage, latency, and overall cost per session.
+- **State History & State Diffs**: Correlate each execution run with the exact graph state checkpoint before and after node execution to inspect how state attributes mutated over time.
+- **Time Travel & Debugging**: Pinpoint the exact turn or step where an agent made a incorrect decision or threw an error, then inspect or resume execution from that exact `thread_id` and `checkpoint_id`.
+- **Human-in-the-Loop (HITL) Tracking**: Observe when a graph pauses at `interrupt_before` or `interrupt_after` boundaries and track how human approval/feedback resumes execution under the same thread.
+
+##### 4. Filtering & Querying Threads in LangSmith UI
+
+- **Dashboard Search**: Filter traces by specific session using metadata queries:
+  ```text
+  metadata.thread_id = "session_user_101"
+  ```
+- **Thread View**: View chronological step-by-step traces grouped by conversation thread to evaluate agent performance over multi-turn dialogues.
+
 #### LangSmith Trace for `5_langgraph.py`
 
 ![LangGraph Parallel Trace](assets/v5_langgraph_trace.png)
