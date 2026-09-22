@@ -27,7 +27,28 @@ os.environ["LANGCHAIN_PROJECT"] = "pdf_rag_demo"
 
 Updating `os.environ["LANGCHAIN_PROJECT"]` dynamically changes which project board in the LangSmith dashboard receives the execution traces.
 
-## Completed
+### Legacy vs. current environment variables
+
+The installed `langsmith`/`langchain-core` accept both naming families:
+
+| Purpose | Legacy | Current |
+| --- | --- | --- |
+| Enable tracing | `LANGCHAIN_TRACING_V2=true` | `LANGSMITH_TRACING=true` |
+| API key | `LANGCHAIN_API_KEY` | `LANGSMITH_API_KEY` |
+| Project name | `LANGCHAIN_PROJECT` | `LANGSMITH_PROJECT` |
+
+`.env.example` uses the legacy names, while `3_rag_v1.py` sets `os.environ["LANGSMITH_PROJECT"] = "RAG"` and the other lessons set `LANGCHAIN_PROJECT`. Both are honored, but a lesson will only appear in the project you expect if the variable it sets matches the one that is actually read.
+
+| Lesson | Project set in code |
+| --- | --- |
+| 1 | none (inherits `.env`) |
+| 2 | `2nd test` |
+| 3 / `v1` | `RAG` (`LANGSMITH_PROJECT`) |
+| 3 / `v2`–`v4` | inherits `.env` (`v2` comments suggest `pdf_rag_demo`) |
+| 4 | `ReAct Agent` |
+| 5 | `LANGGRAPH` |
+
+## Lesson notes
 
 ### Lesson 1 — simple LLM call
 
@@ -77,11 +98,11 @@ result = workflow.invoke({"essay": essay}, config=run_config)
 
 Use `RunnableConfig` as the type annotation when the editor reports that an inline config dictionary is incompatible with `invoke`. It makes the expected LangChain config shape explicit while preserving the tags and metadata in the LangSmith trace.
 
-## Pending lessons
+## Lesson notes (continued)
 
 ### Lesson 3 — RAG
 
-Next, understand the full retrieval flow:
+The full retrieval flow:
 
 1. Load the PDF.
 2. Split it into chunks.
@@ -95,6 +116,8 @@ The embedding model is separate from Gemma because chat models generate text, wh
 #### Tracing behavior in `3_rag_v1.py`
 
 In v1, LangSmith automatically logs the runnables that are part of the LangChain chain, such as the retriever, prompt, Ollama model, and output parser. The PDF loader, chunker/splitter, embedding setup, and FAISS index construction happen before the chain is invoked, so they are not individually logged as LangSmith runs. Later versions add explicit `@traceable` wrappers around setup and preprocessing steps so those components appear in the trace.
+
+V1 also embeds documents manually in batches of 32 through the `build_faiss_index` helper instead of relying on `FAISS.from_documents`. Sending every chunk to Ollama in one request can fail, so batching keeps each embedding call small. The retrieve step uses `search_type="similarity"` with `k=4` and the model runs with `temperature=0`.
 
 #### How `3_rag_v2.py` improves this
 
@@ -198,6 +221,7 @@ Disk caching under `.indices/<hash>/` persists **three core components**:
 - **FAISS Search Index**: When FAISS saves to disk (`vs.save_local(...)`), it creates two files:
   - **`index.faiss`**: The binary C++ spatial index containing the raw vector math and distance grid for lightning-fast similarity search.
   - **`index.pkl`**: A serialized Python dictionary (Pickle) mapping each vector ID back to its original text chunk (`page_content`) and metadata.
+- **`meta.json`**: A human-readable record of the absolute PDF path, `chunk_size`, `chunk_overlap`, and embedding model used to build the index. Useful for inspecting what a given hash directory contains without recomputing the fingerprint.
 
 #### Why Both Files Are Needed
 
@@ -261,6 +285,10 @@ Shows `setup_pipeline` completing in just **0.09s** via `load_index` (`load_inde
 
 In [4_agent.py](file:///Users/abhinav/Documents/Projects/langsmith/langsmith-masterclass/4_agent.py), a ReAct (Reasoning + Acting) Agent is created using `create_react_agent` and executed via `AgentExecutor`.
 
+The agent prompt is pulled from LangChain Hub with `hub.pull("hwchase17/react")`, and it is given two tools: `DuckDuckGoSearchRun` for web search and a custom `@tool` named `get_weather_data` that calls the Weatherstack API. The executor runs with `verbose=True` and `max_iterations=5`, and traces land in the `ReAct Agent` project.
+
+> Security note: the Weatherstack API key is hardcoded in `4_agent.py`. That key should be rotated and moved to `.env` before the repository is shared further, since anything committed should be treated as compromised.
+
 #### Key Concepts & Tracing Architecture
 
 1. **ReAct Loop Execution**:
@@ -305,6 +333,8 @@ In [5_langgraph.py](file:///Users/abhinav/Documents/Projects/langsmith/langsmith
 #### Observability in LangGraph via Threads (`thread_id`)
 
 LangGraph manages stateful, multi-turn agent sessions using checkpointers keyed by a **`thread_id`**. In LangSmith, threads provide session-level observability, allowing developers to trace, analyze, and debug complex agent interactions across multiple turns.
+
+> Note: the graph in `5_langgraph.py` is a single-shot (stateless) essay evaluator and is compiled without a checkpointer, so it does not itself use `thread_id`. The section below documents the thread-based observability pattern used when a graph is compiled with `MemorySaver`, `SqliteSaver`, or `PostgresSaver`, e.g. in a Streamlit chat app. `requirements.txt` already includes `streamlit`, `langgraph-checkpoint-sqlite`, and `sqlite-vec` for that next step.
 
 ##### 1. How `thread_id` is Configured in Execution
 
@@ -362,7 +392,10 @@ response = workflow.invoke(
 
 ## Next steps
 
-- Run lessons 1 and 2 locally with Ollama.
-- Enable LangSmith tracing and inspect the runs in the LangSmith dashboard.
-- Complete and test the RAG lessons with questions grounded in `islr.pdf`.
-- Record observations about latency, output quality, tracing, and caching here.
+All five lessons now run locally with Ollama and are traced in LangSmith. Possible follow-ups:
+
+- Add a checkpointer (`MemorySaver` / `SqliteSaver`) to the LangGraph example and expose it through Streamlit to practice `thread_id` session tracing.
+- Move the Weatherstack API key in `4_agent.py` into `.env` and rotate it.
+- Try a larger chat model (e.g. `llama3.1:8b`) to compare structured-output reliability and latency against `gemma2:2b`.
+- Add hybrid search or a reranker on top of the FAISS retriever in `3_rag_v4.py`.
+- Record new observations about latency, output quality, tracing, and caching here.
